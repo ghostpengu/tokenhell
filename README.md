@@ -16,11 +16,9 @@ Claude Code · Codex · Cursor · Grok · Copilot · Gemini CLI · OpenCode · Q
 
 <br />
 
-<img src="docs/assets/panel-dark.png" width="300" alt="TokenHell panel, dark mode" />
+<img src="docs/assets/panel.png" width="340" alt="TokenHell panel over the desktop: tokens, cost, sparkline and live plan limits" />
 &nbsp;&nbsp;
-<img src="docs/assets/panel-tools.png" width="300" alt="Limits and per-tool breakdown" />
-&nbsp;&nbsp;
-<img src="docs/assets/panel-light.png" width="300" alt="TokenHell panel, light mode" />
+<img src="docs/assets/settings.png" width="325" alt="TokenHell settings" />
 
 </div>
 
