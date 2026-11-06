@@ -44,7 +44,15 @@ You pay for Claude Max, a ChatGPT plan, Cursor, and maybe SuperGrok. Each one hi
 
 ## Install
 
-There are no signed builds yet. Build it yourself in about two minutes:
+**Download:** grab `TokenHell_0.1.0_universal.dmg` from [**Releases**](https://github.com/ghostpengu/tokenhell/releases/latest). It runs on Apple Silicon and Intel, macOS 14+. Drag it to Applications.
+
+The build is ad-hoc signed but not notarized, so macOS blocks the first launch. Click **Open Anyway** in *System Settings → Privacy & Security*, or run:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/TokenHell.app
+```
+
+**Or build it yourself** (about two minutes):
 
 ```sh
 git clone https://github.com/ghostpengu/tokenhell && cd tokenhell
@@ -53,7 +61,7 @@ pnpm tauri build --bundles app
 open target/release/bundle/macos/TokenHell.app
 ```
 
-You need Rust (stable), Node 20+, pnpm and Xcode Command Line Tools. The build is ad-hoc signed, so it runs on your own Mac without a developer account. To start it at login, use **Settings → Launch at login**.
+You need Rust (stable), Node 20+, pnpm and Xcode Command Line Tools. To start it at login, use **Settings → Launch at login**.
 
 > **Keychain prompts.** Live limits for Claude and Cursor need their login tokens, which live in the macOS Keychain. TokenHell reads them through `/usr/bin/security`, so one **Always Allow** is enough and survives app updates. If you deny it, TokenHell stays quiet for 30 minutes instead of asking again.
 
