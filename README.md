@@ -1,0 +1,102 @@
+<div align="center">
+
+<img src="src-tauri/icons/app-icon.png" width="112" alt="TokenHell icon" />
+
+# TokenHell
+
+**See every token you burn, across every AI coding tool, right in your menu bar.**
+
+Claude Code · Codex · Cursor · Grok · Copilot · Gemini CLI · OpenCode · Qwen · Kimi · Pi
+
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111?logo=apple&logoColor=white)](#install)
+[![Rust](https://img.shields.io/badge/Rust-Tauri_v2-b7410e?logo=rust&logoColor=white)](https://v2.tauri.app)
+[![Svelte 5](https://img.shields.io/badge/Svelte-5-ff3e00?logo=svelte&logoColor=white)](https://svelte.dev)
+[![License: MIT](https://img.shields.io/badge/license-MIT-3b82f6)](LICENSE)
+![Size](https://img.shields.io/badge/app-6.6_MB-22c55e)
+
+<br />
+
+<img src="docs/assets/panel-dark.png" width="300" alt="TokenHell panel, dark mode" />
+&nbsp;&nbsp;
+<img src="docs/assets/panel-tools.png" width="300" alt="Limits and per-tool breakdown" />
+&nbsp;&nbsp;
+<img src="docs/assets/panel-light.png" width="300" alt="TokenHell panel, light mode" />
+
+</div>
+
+---
+
+You pay for Claude Max, a ChatGPT plan, Cursor, and maybe SuperGrok. Each one hides its usage on a different page with its own idea of a "limit". TokenHell reads all of them and puts the answer one click away:
+
+- **🔥 Tokens burned:** today, 7 days, 30 days, or all time, with a daily sparkline and the input / output / cache read / cache write mix.
+- **💸 What it would cost at API prices.** Each request is priced on its own, so 1-hour cache writes, long-context tiers, fast mode, priority/flex tiers and web searches are all counted correctly. The Opus total matches a hand calculation from Anthropic's published rates to the cent.
+- **⏳ Live plan limits:** Claude's 5h and weekly windows (including Opus-only), Codex 5h/week and spare resets, Cursor's monthly plan, and Grok credits. Each shows % used and a countdown to reset. When any limit gets hot, the tray icon fills in.
+- **🧊 Native Liquid Glass panel.** It's a real macOS 26 glass window, not a CSS imitation, and falls back to vibrancy on older systems. Light and dark mode both work.
+- **🪶 Featherweight:** a 6.6 MB app that uses 0% CPU when idle. It watches files with FSEvents and only reads lines that are new.
+
+## Why it's different
+
+| | TokenHell | Typical usage trackers |
+|---|---|---|
+| Tools covered | 10 (CLI logs + Cursor/Grok/Copilot APIs) | usually one |
+| Pricing | per request, with every tier and cache TTL | tokens × one flat rate |
+| Live plan limits | Claude, Codex, Cursor, Grok, Copilot | rarely |
+| History | kept after tools delete old logs (Claude Code purges after 30 days) | lost |
+| Footprint | native tray app, ~6 MB | Electron or a terminal tab |
+
+## Install
+
+There are no signed builds yet. Build it yourself in about two minutes:
+
+```sh
+git clone https://github.com/ghostpengu/tokenhell && cd tokenhell
+pnpm install
+pnpm tauri build --bundles app
+open target/release/bundle/macos/TokenHell.app
+```
+
+You need Rust (stable), Node 20+, pnpm and Xcode Command Line Tools. The build is ad-hoc signed, so it runs on your own Mac without a developer account. To start it at login, use **Settings → Launch at login**.
+
+> **Keychain prompts.** Live limits for Claude and Cursor need their login tokens, which live in the macOS Keychain. TokenHell reads them through `/usr/bin/security`, so one **Always Allow** is enough and survives app updates. If you deny it, TokenHell stays quiet for 30 minutes instead of asking again.
+
+## Where the numbers come from
+
+| Tool | Token history | Limits |
+|---|---|---|
+| **Claude Code** | `~/.claude/projects/**/*.jsonl` (deduped per request) | OAuth usage endpoint (token from Keychain) |
+| **Codex** | `~/.codex/sessions`, per-response `token_usage_record` | `codex app-server` → `account/rateLimits/read` |
+| **Cursor** | dashboard usage events, synced every 15 min | `usage-summary`, plus the Grok weekly allowance |
+| **Grok** | Grok Build `updates.jsonl`, grok-cli `grok.db` | SuperGrok credits |
+| **Copilot** | — | `copilot_internal/user` |
+| **Gemini CLI, OpenCode, Qwen, Kimi, Pi** | local session files / SQLite | — |
+
+**Cost model.** Claude and Codex are priced per request from the [LiteLLM price map](https://github.com/BerriAI/litellm), refreshed weekly. Cursor and Grok report their own cost for each request, and TokenHell uses that number. All `$` figures are *API-equivalent* (what the same usage would cost on the API), not your subscription bill.
+
+The research behind each integration, including the undocumented bits, is in [`docs/research/`](docs/research).
+
+## Privacy
+
+- **Local only.** TokenHell has no server, no analytics and no telemetry. The only network calls go to the providers' own usage endpoints and to the LiteLLM price list.
+- **Numbers only.** It stores token counts, model names and timestamps in a local SQLite file under `~/Library/Application Support/io.github.ghostpengu.tokenhell/`. Prompts and responses are never stored.
+- **Credentials stay in memory.** They're read when needed, never written to disk, and never refreshed or sent anywhere except the provider they belong to.
+
+## Develop
+
+```sh
+pnpm dev                              # UI only, in the browser, with mock data
+pnpm app:dev                          # full app (vite + cargo)
+cargo test --workspace                # parsers, pricing, limits
+cargo run -p th-core --example scan -- /tmp/th.db --limits   # headless run on your real data
+```
+
+```
+crates/th-core   ingestion (FSEvents + incremental JSONL), providers, limits, pricing, SQLite
+src-tauri        tray, Liquid Glass panel, background workers, commands
+ui               Svelte 5 panel: sparkline, token mix, limit gauges, per-tool breakdown
+```
+
+To add a tool, implement `HistorySource` (token logs) or a `limits::poll` arm (plan limits). PRs are welcome, especially for Windsurf, Zed, Amp and Cline.
+
+## License
+
+MIT

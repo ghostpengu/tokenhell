@@ -1,0 +1,61 @@
+/* Text + chart tokens. The native Liquid Glass layer is the surface: body stays transparent. */
+:root {
+  color-scheme: light dark;
+  --ink-1: rgba(0, 0, 0, 0.88);
+  --ink-2: rgba(0, 0, 0, 0.58);
+  --ink-3: rgba(0, 0, 0, 0.40);
+  --hair: rgba(0, 0, 0, 0.08);
+  --fill-1: rgba(0, 0, 0, 0.045);
+  --fill-2: rgba(0, 0, 0, 0.08);
+  --track: rgba(0, 0, 0, 0.09);
+  --gap: rgba(255, 255, 255, 0.85);         /* 2px spacer between adjacent fills */
+  --tip-bg: rgba(255, 255, 255, 0.96);
+  --accent: #eb6834;
+
+  /* categorical (reference palette, light) */
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
+  --seq: #2a78d6; --seq-weak: #9ec5f4;
+
+  /* status (fixed) */
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink-1: rgba(255, 255, 255, 0.92);
+    --ink-2: rgba(255, 255, 255, 0.62);
+    --ink-3: rgba(255, 255, 255, 0.42);
+    --hair: rgba(255, 255, 255, 0.09);
+    --fill-1: rgba(255, 255, 255, 0.05);
+    --fill-2: rgba(255, 255, 255, 0.10);
+    --track: rgba(255, 255, 255, 0.10);
+    --gap: rgba(30, 30, 30, 0.9);
+    --tip-bg: rgba(40, 40, 40, 0.96);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    --seq: #3987e5; --seq-weak: #1c5cab;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  html { background: Canvas; }
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; background: transparent; overflow: hidden;
+  font: 13px/1.35 -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  color: var(--ink-1);
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none; user-select: none; cursor: default;
+}
+#app { height: 100%; }
+.num { font-variant-numeric: tabular-nums; }
+button {
+  font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: default;
+}
+button:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; border-radius: 6px; }
+.eyebrow {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3);
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+::-webkit-scrollbar { width: 0; }
