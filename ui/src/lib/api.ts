@@ -13,16 +13,20 @@ export interface ModelSummary { model: string; tokens: Tokens; cost_usd: number 
 export interface ProviderSummary {
   provider: Provider; label: string; tokens: Tokens; cost_usd: number; cost_partial: boolean; models: ModelSummary[]
 }
-export interface DayPoint { day: string; tokens: number; cost_usd: number }
+export interface DayApp { provider: Provider; label: string; tokens: number; cost_usd: number }
+export interface DayPoint { day: string; tokens: number; cost_usd: number; apps: DayApp[] }
 export interface Summary {
   range: Range; tokens: Tokens; cost_usd: number; cost_partial: boolean
   providers: ProviderSummary[]; daily: DayPoint[]; prices_updated: number | null; generated_at: number
 }
 export interface LimitWindow { key: string; label: string; used_pct: number | null; resets_at: number | null; detail: string | null }
+export interface ResetCredits { available: number; next_expires_at: number | null }
 export interface LimitReport {
   provider: Provider; windows: LimitWindow[]; plan: string | null; notes: string[]
+  reset_credits?: ResetCredits | null
   observed_at: number; stale: boolean; error: string | null
 }
+export type ResetOutcome = 'reset' | 'nothingToReset' | 'noCredit' | 'alreadyRedeemed'
 export interface Settings {
   title_mode: TitleMode; limits: Partial<Record<Provider, boolean>>
   poll_minutes: number; hot_threshold: number; price_refresh: boolean
@@ -40,6 +44,7 @@ export const api = {
   summary: (range: Range) => call<Summary>('get_summary', { range }),
   limits: () => call<LimitReport[]>('get_limits'),
   refresh: () => call<void>('refresh'),
+  codexConsumeReset: (idempotencyKey: string) => call<ResetOutcome>('codex_consume_reset', { idempotencyKey }),
   settings: () => call<SettingsView>('get_settings'),
   setSettings: (settings: Settings) => call<void>('set_settings', { settings }),
   setLaunchAtLogin: (enabled: boolean) => call<void>('set_launch_at_login', { enabled }),

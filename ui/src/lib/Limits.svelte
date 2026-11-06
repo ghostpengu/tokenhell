@@ -2,6 +2,7 @@
   import { PROVIDER_LABEL, type LimitReport } from './api'
   import { PROVIDER_COLOR } from './colors'
   import { ago, band, until } from './format'
+  import ResetCredits from './ResetCredits.svelte'
 
   let { reports, now }: { reports: LimitReport[]; now: number } = $props()
   const BAND_LABEL = { good: '', warning: '', serious: 'high', critical: 'near limit', unknown: '' }
@@ -35,6 +36,7 @@
       {#if BAND_LABEL[b]}<span class="sr">{BAND_LABEL[b]}</span>{/if}
     {/each}
     {#each r.notes as n}<div class="note">{n}</div>{/each}
+    {#if r.reset_credits?.available}<ResetCredits report={r} {now} />{/if}
     {#if r.error}<div class="err" title={r.error}><span aria-hidden="true">⚠︎</span> {r.error}</div>{/if}
   </div>
 {/each}

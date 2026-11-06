@@ -72,6 +72,7 @@ pub fn show_panel(app: &AppHandle) {
     let _ = w.move_window_constrained(Position::TrayCenter);
     let _ = w.show();
     let _ = w.set_focus();
+    refit_shadow(&w);
     let s = app.state::<Arc<AppState>>();
     let was_open = s.panel_open.swap(true, Ordering::Relaxed);
     let _ = app.emit("panel-shown", ());
@@ -79,6 +80,52 @@ pub fn show_panel(app: &AppHandle) {
     let newest = s.store.limits().unwrap_or_default().iter().map(|r| r.observed_at).max().unwrap_or(0);
     if !was_open && chrono::Utc::now().timestamp() - newest > 60 {
         s.wake.notify_one();
+    }
+}
+
+/// Corner radius of the panel; must match `windowEffects.radius` in tauri.conf.json.
+#[cfg(target_os = "macos")]
+const PANEL_RADIUS: f64 = 22.0;
+
+/// The glass view is rounded, but the window (and the webview above the glass) is a plain
+/// rectangle, so macOS draws its shadow and rim with square corners. Clip the whole window
+/// content to the glass shape, then have the shadow recomputed from it.
+fn refit_shadow(w: &tauri::WebviewWindow) {
+    #[cfg(target_os = "macos")]
+    {
+        fn apply(w: &tauri::WebviewWindow) {
+            use objc2::runtime::{AnyObject, Bool};
+            use objc2::msg_send;
+            let w2 = w.clone();
+            let _ = w.run_on_main_thread(move || {
+                let Ok(ns) = w2.ns_window() else { return };
+                // SAFETY: valid NSWindow owned by tao; we're on the main thread.
+                unsafe {
+                    let win = &*(ns as *mut AnyObject);
+                    let content: *mut AnyObject = msg_send![win, contentView];
+                    if let Some(content) = content.as_ref() {
+                        let frame: *mut AnyObject = msg_send![content, superview];
+                        for v in [Some(content), frame.as_ref()].into_iter().flatten() {
+                            let _: () = msg_send![v, setWantsLayer: Bool::YES];
+                            let layer: *mut AnyObject = msg_send![v, layer];
+                            if let Some(layer) = layer.as_ref() {
+                                let _: () = msg_send![layer, setCornerRadius: PANEL_RADIUS];
+                                let _: () = msg_send![layer, setCornerCurve: &*objc2_foundation::ns_string!("continuous")];
+                                let _: () = msg_send![layer, setMasksToBounds: Bool::YES];
+                            }
+                        }
+                    }
+                    let _: () = msg_send![win, invalidateShadow];
+                }
+            });
+        }
+        apply(w);
+        // Again once the webview has painted (first open draws after show).
+        let w = w.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(80));
+            apply(&w);
+        });
     }
 }
 

@@ -76,10 +76,21 @@ pub struct ProviderSummary {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct DayApp {
+    pub provider: Provider,
+    pub label: &'static str,
+    pub tokens: u64,
+    pub cost_usd: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct DayPoint {
     pub day: String,
     pub tokens: u64,
     pub cost_usd: f64,
+    /// Apps that spent tokens this day. Largest share of the window first,
+    /// which is the bottom segment of the stacked bar.
+    pub apps: Vec<DayApp>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -105,10 +116,15 @@ pub fn summarize(store: &Store, pricing: &Pricing, range: Range) -> Result<Summa
         .earliest()
         .map(|d| d.timestamp_millis())
         .unwrap_or(0);
-    let mut by_day: BTreeMap<String, DayPoint> = (0..days)
+    struct DayAcc {
+        tokens: u64,
+        cost_usd: f64,
+        apps: BTreeMap<String, (u64, f64)>,
+    }
+    let mut by_day: BTreeMap<String, DayAcc> = (0..days)
         .map(|i| {
             let d = (today - Duration::days(days - 1 - i)).format("%Y-%m-%d").to_string();
-            (d.clone(), DayPoint { day: d, tokens: 0, cost_usd: 0.0 })
+            (d, DayAcc { tokens: 0, cost_usd: 0.0, apps: BTreeMap::new() })
         })
         .collect();
 
@@ -131,8 +147,13 @@ pub fn summarize(store: &Store, pricing: &Pricing, range: Range) -> Result<Summa
                 .map(|d| d.format("%Y-%m-%d").to_string())
                 .unwrap_or_default();
             if let Some(dp) = by_day.get_mut(&day) {
-                dp.tokens += e.total();
-                dp.cost_usd += cost.unwrap_or(0.0);
+                let n = e.total();
+                let c = cost.unwrap_or(0.0);
+                dp.tokens += n;
+                dp.cost_usd += c;
+                let slot = dp.apps.entry(e.provider.clone()).or_insert((0, 0.0));
+                slot.0 += n;
+                slot.1 += c;
             }
         }
         if e.ts < from {
@@ -181,13 +202,42 @@ pub fn summarize(store: &Store, pricing: &Pricing, range: Range) -> Result<Summa
     }
     providers.sort_by(|a, b| b.tokens.total.cmp(&a.tokens.total));
 
+    let mut app_totals: BTreeMap<String, u64> = BTreeMap::new();
+    for day in by_day.values() {
+        for (provider, (n, _)) in &day.apps {
+            *app_totals.entry(provider.clone()).or_default() += *n;
+        }
+    }
+    let daily = by_day
+        .into_iter()
+        .map(|(day, d)| {
+            let mut apps: Vec<DayApp> = d
+                .apps
+                .into_iter()
+                .filter_map(|(provider, (tokens, cost_usd))| {
+                    if tokens == 0 {
+                        return None;
+                    }
+                    let provider = Provider::parse(&provider)?;
+                    Some(DayApp { label: provider.label(), provider, tokens, cost_usd })
+                })
+                .collect();
+            apps.sort_by(|a, b| {
+                let ta = app_totals.get(a.provider.as_str()).copied().unwrap_or(0);
+                let tb = app_totals.get(b.provider.as_str()).copied().unwrap_or(0);
+                tb.cmp(&ta).then(a.label.cmp(b.label))
+            });
+            DayPoint { day, tokens: d.tokens, cost_usd: d.cost_usd, apps }
+        })
+        .collect();
+
     Ok(Summary {
         range,
         tokens,
         cost_usd: cost_total,
         cost_partial: partial,
         providers,
-        daily: by_day.into_values().collect(),
+        daily,
         prices_updated: pricing.updated,
         generated_at: chrono::Utc::now().timestamp(),
     })

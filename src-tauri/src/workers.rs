@@ -103,6 +103,20 @@ pub async fn poll_all(app: &AppHandle) {
     tray::update(app);
 }
 
+/// Poll a single provider now (e.g. right after an action changed its limits).
+pub async fn poll_one(app: &AppHandle, p: Provider) {
+    let s = st(app);
+    let r = match tokio::time::timeout(Duration::from_secs(30), th_core::limits::poll(&s.http, p)).await {
+        Ok(r) => r,
+        Err(_) => Some(th_core::LimitReport::error(p, "timed out")),
+    };
+    if let Some(r) = r {
+        save_report(&s, r);
+    }
+    let _ = app.emit("limits-updated", ());
+    tray::update(app);
+}
+
 /// Save a report, keeping the last good windows (marked stale) when this poll failed.
 fn save_report(s: &AppState, mut r: th_core::LimitReport) {
     if let Some(err) = r.error.clone() {

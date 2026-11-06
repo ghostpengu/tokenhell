@@ -57,6 +57,15 @@ struct SettingsView {
     version: &'static str,
 }
 
+/// Spend one Codex "full reset" credit, then re-poll Codex so the panel shows the new limits.
+#[tauri::command]
+async fn codex_consume_reset(app: AppHandle, idempotency_key: String) -> Result<th_core::limits::codex::ResetOutcome, String> {
+    let outcome = th_core::limits::codex::consume_reset_credit(&idempotency_key).await.map_err(|e| format!("{e:#}"))?;
+    tracing::info!("codex reset credit: {outcome:?}");
+    workers::poll_one(&app, Provider::Codex).await;
+    Ok(outcome)
+}
+
 #[tauri::command]
 fn get_settings(app: AppHandle, state: St<'_>) -> SettingsView {
     let s = state.settings();
@@ -124,6 +133,7 @@ pub fn run() {
             get_summary,
             get_limits,
             refresh,
+            codex_consume_reset,
             get_settings,
             set_settings,
             set_launch_at_login,

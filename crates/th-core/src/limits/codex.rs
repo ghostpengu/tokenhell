@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::model::{LimitReport, LimitWindow, Provider, j};
+use crate::model::{LimitReport, LimitWindow, Provider, ResetCredits, j};
 
 pub async fn poll() -> LimitReport {
     match tokio::time::timeout(Duration::from_secs(20), live()).await {
@@ -46,6 +46,45 @@ fn codex_bin() -> Option<PathBuf> {
 }
 
 async fn live() -> Result<LimitReport> {
+    Ok(parse_live(&rpc("account/rateLimits/read", None).await?))
+}
+
+/// Outcome of redeeming a Codex "full reset" credit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ResetOutcome {
+    Reset,
+    NothingToReset,
+    NoCredit,
+    AlreadyRedeemed,
+}
+
+/// Spend one rate-limit reset credit (the backend picks which). Irreversible.
+/// `idempotency_key` identifies one logical attempt: reuse it when retrying that attempt so a
+/// lost response can't spend a second credit.
+pub async fn consume_reset_credit(idempotency_key: &str) -> Result<ResetOutcome> {
+    if idempotency_key.trim().is_empty() {
+        return Err(anyhow!("missing idempotency key"));
+    }
+    let fut = rpc("account/rateLimitResetCredit/consume", Some(json!({ "idempotencyKey": idempotency_key })));
+    let res = tokio::time::timeout(Duration::from_secs(30), fut)
+        .await
+        .map_err(|_| anyhow!("app-server timed out"))??;
+    parse_outcome(&res)
+}
+
+pub(crate) fn parse_outcome(res: &Value) -> Result<ResetOutcome> {
+    Ok(match j::s(res, &["outcome"]) {
+        Some("reset") => ResetOutcome::Reset,
+        Some("nothingToReset") => ResetOutcome::NothingToReset,
+        Some("noCredit") => ResetOutcome::NoCredit,
+        Some("alreadyRedeemed") => ResetOutcome::AlreadyRedeemed,
+        other => return Err(anyhow!("unexpected reset outcome: {}", other.unwrap_or("none"))),
+    })
+}
+
+/// One request against a short-lived `codex app-server` (stdio JSON-RPC); returns `result`.
+async fn rpc(method: &str, params: Option<Value>) -> Result<Value> {
     let bin = codex_bin().ok_or_else(|| anyhow!("codex CLI not found"))?;
     let mut child = tokio::process::Command::new(bin)
         .arg("app-server")
@@ -57,10 +96,14 @@ async fn live() -> Result<LimitReport> {
         .context("spawning codex app-server")?;
     let mut stdin = child.stdin.take().unwrap();
     let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut req = json!({"id": 2, "method": method});
+    if let Some(p) = params {
+        req["params"] = p;
+    }
     let msgs = [
         json!({"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "tokenhell", "title": "TokenHell", "version": env!("CARGO_PKG_VERSION")}}}),
         json!({"method": "initialized"}),
-        json!({"id": 2, "method": "account/rateLimits/read"}),
+        req,
     ];
     for m in msgs {
         stdin.write_all(format!("{m}\n").as_bytes()).await?;
@@ -73,7 +116,7 @@ async fn live() -> Result<LimitReport> {
             if let Some(e) = v.get("error") {
                 return Err(anyhow!("app-server: {}", j::s(e, &["message"]).unwrap_or("error")));
             }
-            return Ok(parse_live(v.get("result").unwrap_or(&Value::Null)));
+            return Ok(v.get("result").cloned().unwrap_or(Value::Null));
         }
     }
     Err(anyhow!("app-server closed without answering"))
@@ -112,9 +155,19 @@ pub(crate) fn parse_live(res: &Value) -> LimitReport {
             }
         }
     }
-    let resets = j::u(res, &["rateLimitResetCredits", "availableCount"]);
-    if resets > 0 {
-        r.notes.push(format!("{resets} full reset{} available", if resets == 1 { "" } else { "s" }));
+    if let Some(rc) = j::get(res, &["rateLimitResetCredits"]) {
+        let available = j::u(rc, &["availableCount"]);
+        let next_expires_at = rc
+            .get("credits")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|c| j::s(c, &["status"]).is_none_or(|s| s == "available"))
+            .filter_map(|c| j::ts_s(c.get("expiresAt")))
+            .min();
+        if available > 0 {
+            r.reset_credits = Some(ResetCredits { available, next_expires_at });
+        }
     }
     r
 }
@@ -172,6 +225,40 @@ mod tests {
         assert_eq!(r.windows[1].key, "week");
         assert_eq!(r.windows[1].used_pct, Some(52.0));
         assert_eq!(r.plan.as_deref(), Some("team"));
-        assert_eq!(r.notes, vec!["2 full resets available"]);
+        assert!(r.notes.is_empty());
+        assert_eq!(r.reset_credits, Some(super::ResetCredits { available: 2, next_expires_at: None }));
+    }
+
+    #[test]
+    fn reset_credit_expiry_uses_earliest_available() {
+        let v = serde_json::json!({"rateLimits":{},"rateLimitResetCredits":{"availableCount":2,"credits":[
+            {"id":"a","status":"available","expiresAt":1800000000},
+            {"id":"b","status":"redeemed","expiresAt":1700000000},
+            {"id":"c","status":"available","expiresAt":1790000000},
+            {"id":"d","status":"available","expiresAt":null}]}});
+        let rc = super::parse_live(&v).reset_credits.unwrap();
+        assert_eq!(rc.next_expires_at, Some(1790000000));
+        let none = serde_json::json!({"rateLimits":{},"rateLimitResetCredits":{"availableCount":0,"credits":[]}});
+        assert_eq!(super::parse_live(&none).reset_credits, None);
+    }
+
+    /// Read-only smoke test against the real `codex app-server` (never consumes a credit).
+    #[tokio::test]
+    #[ignore]
+    async fn live_rate_limits_read() {
+        let r = super::live().await.expect("live read");
+        println!("{r:#?}");
+        assert!(!r.windows.is_empty());
+    }
+
+    #[test]
+    fn parses_reset_outcomes() {
+        use super::{ResetOutcome::*, parse_outcome};
+        let o = |s: &str| parse_outcome(&serde_json::json!({"outcome": s})).ok();
+        assert_eq!(o("reset"), Some(Reset));
+        assert_eq!(o("nothingToReset"), Some(NothingToReset));
+        assert_eq!(o("noCredit"), Some(NoCredit));
+        assert_eq!(o("alreadyRedeemed"), Some(AlreadyRedeemed));
+        assert_eq!(o("bogus"), None);
     }
 }

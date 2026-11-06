@@ -113,12 +113,22 @@ pub struct LimitWindow {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ResetCredits {
+    pub available: u64,
+    /// Earliest expiry (Unix seconds) among available credits, when the backend lists them.
+    pub next_expires_at: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LimitReport {
     pub provider: Provider,
     pub windows: Vec<LimitWindow>,
     pub plan: Option<String>,
-    /// Extra one-liners ("2 full resets available").
+    /// Extra one-liners ("$12 credits").
     pub notes: Vec<String>,
+    /// Redeemable "full reset" credits (Codex). `#[serde(default)]` keeps older stored rows readable.
+    #[serde(default)]
+    pub reset_credits: Option<ResetCredits>,
     /// Unix seconds when this data was observed at the source.
     pub observed_at: i64,
     /// True when the data came from a cached/local snapshot rather than a live query.
@@ -133,6 +143,7 @@ impl LimitReport {
             windows: vec![],
             plan: None,
             notes: vec![],
+            reset_credits: None,
             observed_at: chrono::Utc::now().timestamp(),
             stale: false,
             error: None,

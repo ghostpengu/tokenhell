@@ -9,7 +9,7 @@ pub mod providers;
 pub mod store;
 pub mod summary;
 
-pub use model::{LimitReport, LimitWindow, Provider, UsageEvent};
+pub use model::{LimitReport, LimitWindow, Provider, ResetCredits, UsageEvent};
 
 /// Shared HTTP client: short timeouts, no cookies stored, identifiable UA.
 pub fn http_client() -> reqwest::Client {
