@@ -13,10 +13,11 @@ pub enum Provider {
     Pi,
     Qwen,
     Kimi,
+    Antigravity,
 }
 
 impl Provider {
-    pub const ALL: [Provider; 10] = [
+    pub const ALL: [Provider; 11] = [
         Provider::Claude,
         Provider::Codex,
         Provider::Cursor,
@@ -27,6 +28,7 @@ impl Provider {
         Provider::Pi,
         Provider::Qwen,
         Provider::Kimi,
+        Provider::Antigravity,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -41,6 +43,7 @@ impl Provider {
             Provider::Pi => "pi",
             Provider::Qwen => "qwen",
             Provider::Kimi => "kimi",
+            Provider::Antigravity => "antigravity",
         }
     }
 
@@ -60,6 +63,7 @@ impl Provider {
             Provider::Pi => "Pi",
             Provider::Qwen => "Qwen Code",
             Provider::Kimi => "Kimi",
+            Provider::Antigravity => "Antigravity CLI",
         }
     }
 }

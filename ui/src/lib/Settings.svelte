@@ -1,16 +1,52 @@
 <script lang="ts">
   import { api, type SettingsView, type TitleMode } from './api'
+  import { parseTokenAmount } from './format'
   import { PROVIDER_COLOR } from './colors'
 
   let { onback }: { onback: () => void } = $props()
+  let goalInput = $state('')
+  let goalError = $state('')
+  let goalStatus = $state('')
+  let goalSaving = $state(false)
   let view = $state<SettingsView | null>(null)
 
   $effect(() => {
-    api.settings().then((v) => (view = v))
+    api.settings().then(async (v) => {
+      view = v
+      goalInput = v.settings.daily_token_goal?.toString() ?? ''
+      if (v.settings.daily_token_goal != null) await notificationStatus(false)
+    }).catch((e) => (goalError = String(e)))
   })
 
   async function save() {
     if (view) await api.setSettings($state.snapshot(view.settings))
+  }
+  async function notificationStatus(request: boolean) {
+    try {
+      const granted = await api.goalNotificationPermission(request)
+      goalStatus = granted ? 'Notification enabled when you reach your goal.' : 'Notifications are off. Enable them in macOS System Settings; progress still works.'
+    } catch {
+      goalStatus = 'Notifications unavailable; progress still works.'
+    }
+  }
+  async function saveGoal(disable = false) {
+    if (!view || goalSaving) return
+    const amount = parseTokenAmount(goalInput)
+    goalError = ''
+    if (!disable && amount === null) {
+      goalError = 'Enter a positive token amount, e.g. 100M, 1.5B, or 500K (maximum 9,007,199,254,740,991 tokens).'
+      return
+    }
+    goalSaving = true
+    try {
+      if (!disable) await notificationStatus(true)
+      const settings = { ...$state.snapshot(view.settings), daily_token_goal: disable ? null : amount }
+      await api.setSettings(settings)
+      view.settings = settings
+      if (disable) { goalInput = ''; goalStatus = 'Daily goal disabled.' }
+      else goalStatus = `Goal saved. ${goalStatus}`
+    } catch (e) { goalError = `Could not save goal: ${String(e)}` }
+    finally { goalSaving = false }
   }
   function setMode(m: TitleMode) {
     if (!view) return
@@ -50,6 +86,21 @@
           <button role="radio" aria-checked={view.settings.title_mode === m.id} class:on={view.settings.title_mode === m.id} onclick={() => setMode(m.id)}>{m.label}</button>
         {/each}
       </div>
+    </section>
+
+    <section>
+      <div class="eyebrow">Daily goal</div>
+      <label class="goal-input">
+        <span>Tokens per day</span>
+        <input type="text" bind:value={goalInput} placeholder="e.g. 100M or 1B" disabled={goalSaving} />
+      </label>
+      <div class="goal-actions">
+        <button onclick={() => saveGoal()} disabled={goalSaving}>Save goal</button>
+        {#if view.settings.daily_token_goal != null}<button onclick={() => saveGoal(true)} disabled={goalSaving}>Disable</button>{/if}
+      </div>
+      <p class="fine">All tools combined, including cache tokens. Resets at local midnight.</p>
+      {#if goalError}<p class="fine goal-error" role="alert">{goalError}</p>{/if}
+      {#if goalStatus}<p class="fine" role="status">{goalStatus}</p>{/if}
     </section>
 
     <section>
@@ -101,7 +152,13 @@
 </div>
 
 <style>
-  .settings { display: flex; flex-direction: column; gap: 14px; height: 100%; }
+  .goal-input { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+  .goal-input input { min-width: 0; width: 155px; font: inherit; color: var(--ink-1); background: var(--fill-1); border: 1px solid var(--hair); border-radius: 6px; padding: 5px 7px; }
+  .goal-actions { display: flex; gap: 8px; }
+  .goal-actions button { background: var(--fill-2); padding: 4px 9px; border-radius: 6px; }
+  .goal-actions button:disabled { opacity: .5; }
+  .goal-error { color: var(--critical); }
+  .settings { overflow-y: auto; display: flex; flex-direction: column; gap: 14px; height: 100%; }
   header { display: flex; align-items: center; gap: 10px; height: 28px; }
   h1 { font-size: 14px; font-weight: 650; margin: 0; }
   .back { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 7px; color: var(--ink-2); }

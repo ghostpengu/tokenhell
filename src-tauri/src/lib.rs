@@ -1,3 +1,4 @@
+mod goal;
 mod state;
 mod tray;
 mod workers;
@@ -21,16 +22,29 @@ async fn get_summary(state: St<'_>, range: Range) -> Result<Summary, String> {
     let s = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let pricing = s.pricing.read().unwrap_or_else(|e| e.into_inner());
-        summarize(&s.store, &pricing, range).map_err(|e| format!("{e:#}"))
+        let mut summary = summarize(&s.store, &pricing, range).map_err(|e| format!("{e:#}"))?;
+        summary.daily_goal = goal::progress(&s).map_err(|e| format!("{e:#}"))?;
+        Ok(summary)
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
+async fn goal_notification_permission(app: AppHandle, request: bool) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || goal::permission(&app, request).map_err(|e| e.to_string()))
+        .await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn get_limits(state: St<'_>) -> Vec<LimitReport> {
     let enabled = state.enabled_limits();
     state.store.limits().unwrap_or_default().into_iter().filter(|r| enabled.contains(&r.provider)).collect()
+}
+
+#[tauri::command]
+fn get_burning_until(state: St<'_>) -> i64 {
+    state.burning_until()
 }
 
 #[tauri::command]
@@ -70,7 +84,7 @@ async fn codex_consume_reset(app: AppHandle, idempotency_key: String) -> Result<
 fn get_settings(app: AppHandle, state: St<'_>) -> SettingsView {
     let s = state.settings();
     let limits_supported =
-        |p: Provider| matches!(p, Provider::Claude | Provider::Codex | Provider::Cursor | Provider::Grok | Provider::Copilot);
+        |p: Provider| matches!(p, Provider::Claude | Provider::Codex | Provider::Cursor | Provider::Grok | Provider::Copilot | Provider::Antigravity);
     SettingsView {
         providers: Provider::ALL
             .into_iter()
@@ -101,6 +115,7 @@ fn set_settings(app: AppHandle, state: St<'_>, settings: Settings) -> Result<(),
         state.wake.notify_one();
     }
     tray::update(&app);
+    workers::usage_changed(&app);
     Ok(())
 }
 
@@ -128,10 +143,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| tray::show_panel(app)))
         .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![
+            goal_notification_permission,
             get_summary,
             get_limits,
+            get_burning_until,
             refresh,
             codex_consume_reset,
             get_settings,

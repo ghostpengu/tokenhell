@@ -14,6 +14,93 @@ const TRAY_ID: &str = "main";
 const ICON: &[u8] = include_bytes!("../icons/tray.png");
 const ICON_HOT: &[u8] = include_bytes!("../icons/tray-hot.png");
 
+/// Decode a horizontal strip into individual template images once at startup.
+#[cfg(target_os = "macos")]
+fn animation_frames(bytes: &[u8]) -> Option<Vec<Image<'static>>> {
+    const SIZE: usize = 44;
+    const COUNT: usize = 16;
+    let strip = Image::from_bytes(bytes).ok()?;
+    if strip.width() != (SIZE * COUNT) as u32 || strip.height() != SIZE as u32 { return None }
+    let pixels = strip.rgba();
+    Some((0..COUNT).map(|frame| {
+        let mut rgba = Vec::with_capacity(SIZE * SIZE * 4);
+        for row in 0..SIZE {
+            let start = (row * SIZE * COUNT + frame * SIZE) * 4;
+            rgba.extend_from_slice(&pixels[start..start + SIZE * 4]);
+        }
+        Image::new_owned(rgba, SIZE as u32, SIZE as u32)
+    }).collect())
+}
+
+#[cfg(target_os = "macos")]
+fn tray_frames(normal: &[u8], hot: &[u8]) -> Option<(Vec<Image<'static>>, Vec<Image<'static>>)> {
+    match (animation_frames(normal), animation_frames(hot)) {
+        (Some(normal), Some(hot)) => Some((normal, hot)),
+        _ => {
+            tracing::warn!("could not decode tray animation; using static icons");
+            match (Image::from_bytes(ICON), Image::from_bytes(ICON_HOT)) {
+                (Ok(normal), Ok(hot)) => Some((vec![normal], vec![hot])),
+                _ => {
+                    tracing::error!("could not decode static tray icons");
+                    None
+                }
+            }
+        }
+    }
+}
+
+/// Animate only after recent local token usage, preserving macOS template colouring.
+#[cfg(target_os = "macos")]
+fn animate(app: AppHandle) {
+    std::thread::spawn(move || {
+        let Some((normal, hot)) = tray_frames(
+            include_bytes!("../icons/tray-frames.png"),
+            include_bytes!("../icons/tray-hot-frames.png"),
+        ) else { return };
+        let animated = normal.len() > 1;
+        let mut step = 0;
+        let mut displayed = None;
+        let mut reduce_motion = false;
+        let mut next_motion_check = std::time::Instant::now();
+        loop {
+            let state = app.state::<Arc<AppState>>();
+            let active = now_ms() < state.burning_until();
+            let is_hot = state.hot.load(Ordering::Relaxed);
+            if active && animated && std::time::Instant::now() >= next_motion_check {
+                // Query AppKit on the main thread so changes to Reduce Motion apply promptly.
+                let (tx, rx) = std::sync::mpsc::channel();
+                if app.run_on_main_thread(move || {
+                    use objc2::{class, msg_send};
+                    use objc2::runtime::{AnyObject, Bool};
+                    // SAFETY: NSWorkspace is an AppKit singleton, queried on the main thread.
+                    let reduce = unsafe {
+                        let workspace: *mut AnyObject = msg_send![class!(NSWorkspace), sharedWorkspace];
+                        let value: Bool = msg_send![workspace, accessibilityDisplayShouldReduceMotion];
+                        value.as_bool()
+                    };
+                    let _ = tx.send(reduce);
+                }).is_err() { break }
+                let Ok(reduce) = rx.recv() else { break };
+                reduce_motion = reduce;
+                next_motion_check = std::time::Instant::now() + std::time::Duration::from_secs(1);
+            } else if !active {
+                next_motion_check = std::time::Instant::now();
+            }
+            let moving = active && animated && !reduce_motion;
+            let frame = if moving { step % normal.len() } else { 0 };
+            if displayed != Some((is_hot, frame)) {
+                let Some(tray) = app.tray_by_id(TRAY_ID) else { break };
+                let image = if is_hot { &hot[frame] } else { &normal[frame] };
+                if tray.set_icon_with_as_template(Some(image.clone()), true).is_ok() {
+                    displayed = Some((is_hot, frame));
+                }
+            }
+            if moving { step += 1 } else { step = 0 }
+            std::thread::sleep(std::time::Duration::from_millis(if moving { 80 } else { 250 }));
+        }
+    });
+}
+
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
@@ -46,6 +133,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             }
         })
         .build(app)?;
+    #[cfg(target_os = "macos")]
+    animate(app.clone());
     Ok(())
 }
 
@@ -177,6 +266,9 @@ pub fn update(app: &AppHandle) {
     let _ = tray.set_title(title.as_deref());
 
     let hot = max_pct.is_some_and(|p| p >= settings.hot_threshold);
+    #[cfg(target_os = "macos")]
+    s.hot.store(hot, Ordering::Relaxed);
+    #[cfg(not(target_os = "macos"))]
     if s.hot.swap(hot, Ordering::Relaxed) != hot {
         if let Ok(img) = Image::from_bytes(if hot { ICON_HOT } else { ICON }) {
             let _ = tray.set_icon(Some(img));
@@ -192,6 +284,25 @@ pub fn update(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn animation_strips_contain_distinct_visible_frames() {
+        for bytes in [include_bytes!("../icons/tray-frames.png").as_slice(), include_bytes!("../icons/tray-hot-frames.png").as_slice()] {
+            let frames = super::animation_frames(bytes).expect("valid animation strip");
+            assert_eq!(frames.len(), 16);
+            assert!(frames.iter().all(|f| f.rgba().chunks_exact(4).any(|pixel| pixel[3] != 0)));
+            assert_ne!(frames[0].rgba(), frames[4].rgba());
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn invalid_animation_uses_both_static_icons() {
+        let (normal, hot) = super::tray_frames(b"invalid", include_bytes!("../icons/tray-hot-frames.png")).unwrap();
+        assert_eq!((normal.len(), hot.len()), (1, 1));
+        assert_ne!(normal[0].rgba(), hot[0].rgba());
+    }
+
     #[test]
     fn tokens_format() {
         assert_eq!(super::fmt_tokens(950), "950");

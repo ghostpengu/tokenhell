@@ -21,6 +21,7 @@ const TOOLS = [
   { name: 'Grok', color: 'var(--color-grok)' },
   { name: 'Copilot', color: 'var(--color-copilot)' },
   { name: 'Gemini CLI', color: 'var(--color-gemini)' },
+  { name: 'Antigravity CLI', color: 'var(--color-antigravity)' },
   { name: 'OpenCode', color: 'var(--color-opencode)' },
   { name: 'Qwen', color: 'rgb(255 246 240 / 0.42)' },
   { name: 'Kimi', color: 'rgb(255 246 240 / 0.42)' },
@@ -215,7 +216,7 @@ function Hero({ live }: { live: number }) {
             href={DOWNLOAD}
             className="pointer-events-auto inline-flex items-center gap-2 rounded-full border-[0.5px] border-white/15 bg-black/30 py-1 pr-3 pl-1 text-[12.5px] text-ink-2 backdrop-blur-md transition-colors hover:text-ink-1"
           >
-            <span className="rounded-full bg-flame/90 px-2 py-0.5 text-[11.5px] font-semibold text-black">v0.1.0</span>
+            <span className="rounded-full bg-flame/90 px-2 py-0.5 text-[11.5px] font-semibold text-black">v0.1.1</span>
             Free and open source for macOS 14+
             <span aria-hidden>→</span>
           </a>
@@ -260,7 +261,7 @@ function Hero({ live }: { live: number }) {
               Source on GitHub
             </a>
           </div>
-          <div className="mt-5 text-[13px] text-ink-3">Universal .dmg · Apple Silicon and Intel · 6.6 MB · MIT</div>
+          <div className="mt-5 text-[13px] text-ink-3">Universal .dmg · Apple Silicon and Intel · 7.1 MiB · MIT</div>
         </div>
 
         <div className="flex justify-center lg:justify-end">
@@ -356,7 +357,7 @@ function Features() {
         <Reveal className="md:col-span-3" delay={0.04}>
           <Card className="h-full">
             <CardTitle title="Live plan limits">
-              Claude's 5h and weekly windows (Opus-only too), Codex 5h and week, Cursor's month and Grok credits, each with a
+              Claude's 5h and weekly windows (Opus-only too), Codex and Antigravity quotas, Cursor's month and Grok credits, each with a
               countdown to reset.
             </CardTitle>
             <div className="mt-7 space-y-3">
@@ -436,8 +437,8 @@ function Features() {
             <div className="mt-6 flex gap-8">
               <div>
                 <div className="tnum text-[40px] leading-none font-semibold tracking-tight">
-                  <CountUp to={6.6} decimals={1} duration={1.4} />
-                  <span className="ml-1 text-[18px] text-ink-3">MB</span>
+                  <CountUp to={14.3} decimals={1} duration={1.4} />
+                  <span className="ml-1 text-[18px] text-ink-3">MiB</span>
                 </div>
                 <div className="mt-1.5 text-[12px] text-ink-3">app size</div>
               </div>
@@ -457,11 +458,11 @@ function Features() {
 
 function Compare() {
   const rows = [
-    ['Tools covered', '10: CLI logs plus Cursor, Grok and Copilot APIs', 'Usually one'],
+    ['Tools covered', '11: CLI logs plus Cursor, Grok and Copilot APIs', 'Usually one'],
     ['Pricing', 'Per request, with every tier and cache TTL', 'Tokens × one flat rate'],
-    ['Live plan limits', 'Claude, Codex, Cursor, Grok, Copilot', 'Rarely'],
+    ['Live plan limits', 'Claude, Codex, Antigravity, Cursor, Grok, Copilot', 'Rarely'],
     ['History', 'Kept after tools delete old logs', 'Lost after 30 days'],
-    ['Footprint', 'Native tray app, about 6 MB', 'Electron or a terminal tab'],
+    ['Footprint', 'Native tray app, about 14 MiB universal', 'Electron or a terminal tab'],
   ]
   return (
     <section className="mx-auto max-w-4xl px-4 pb-28 sm:px-6">
@@ -495,6 +496,7 @@ function Sources() {
     { tool: 'Cursor', color: 'var(--color-cursor)', history: 'Dashboard usage events + optional CLI stop hook', limits: 'usage-summary, plus Grok weekly allowance' },
     { tool: 'Grok', color: 'var(--color-grok)', history: 'Grok Build updates.jsonl, grok-cli grok.db', limits: 'SuperGrok credits' },
     { tool: 'Copilot', color: 'var(--color-copilot)', history: '—', limits: 'copilot_internal/user' },
+    { tool: 'Antigravity CLI (agy)', color: 'var(--color-antigravity)', history: 'Local conversation SQLite databases', limits: 'Per-family 5h/week and model-specific quotas via agy /usage' },
     { tool: 'Gemini CLI, OpenCode, Qwen, Kimi, Pi', color: 'var(--color-gemini)', history: 'Local session files and SQLite', limits: '—' },
   ]
   return (
@@ -586,7 +588,7 @@ function Install() {
                 className="flex items-center gap-2.5 rounded-full bg-ink-1 px-7 py-4 text-[16px] font-semibold text-black shadow-[0_10px_40px_-10px_rgb(255_122_58/0.8)] transition-transform active:scale-[0.97]"
               >
                 <AppleMark className="h-[18px] w-[16px]" />
-                Download TokenHell_0.1.0_universal.dmg
+                Download TokenHell_0.1.1_universal.dmg
               </a>
             </Magnet>
           </div>

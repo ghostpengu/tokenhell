@@ -1,3 +1,14 @@
+/** Parse whole tokens or case-insensitive K/M/B shorthand without rounding. */
+export function parseTokenAmount(value: string): number | null {
+  const match = /^(\d+)(?:\.(\d+))?\s*([kmb])?$/i.exec(value.trim())
+  if (!match) return null
+  const scale = { k: 3, m: 6, b: 9 }[match[3]?.toLowerCase() ?? ''] ?? 0
+  const fraction = (match[2] ?? '').replace(/0+$/, '')
+  if (fraction.length > scale) return null
+  const amount = BigInt(match[1] + fraction.padEnd(scale, '0'))
+  return amount > 0n && amount <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(amount) : null
+}
+
 export function tokens(n: number): string {
   if (n < 1_000) return String(n)
   if (n < 1_000_000) return trim((n / 1e3).toFixed(1)) + 'K'

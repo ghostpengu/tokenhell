@@ -9,7 +9,7 @@
 </script>
 
 {#each reports as r (r.provider)}
-  <div class="card">
+  <div class="card" class:grouped={r.provider === 'antigravity'}>
     <div class="head">
       <span class="dot" style="background:{PROVIDER_COLOR[r.provider]}"></span>
       <span class="name">{PROVIDER_LABEL[r.provider]}</span>
@@ -19,7 +19,7 @@
     {#each r.windows as w (w.key)}
       {@const b = band(w.used_pct)}
       <div class="row">
-        <span class="wl">{w.label}</span>
+        <span class="wl" title={w.label}>{w.label}</span>
         <div class="track" role="meter" aria-label="{w.label} used" aria-valuenow={w.used_pct ?? undefined} aria-valuemin="0" aria-valuemax="100">
           {#if w.used_pct != null}
             <div class="fill {b}" style="width:{Math.min(100, Math.max(w.used_pct, 1.5))}%"></div>
@@ -52,6 +52,8 @@
   }
   .stale { color: var(--ink-3); font-size: 11px; }
   .row { display: grid; grid-template-columns: 74px 1fr 42px 52px; align-items: center; gap: 8px; height: 20px; }
+  .grouped .row { grid-template-columns: 108px minmax(0, 1fr) 42px 52px; }
+  .grouped .detail { padding-left: 116px; }
   .wl { color: var(--ink-2); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .track { height: 5px; border-radius: 3px; background: var(--track); overflow: hidden; }
   .fill { height: 100%; border-radius: 3px; transition: width 400ms cubic-bezier(.2,.8,.2,1); }

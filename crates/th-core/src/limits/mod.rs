@@ -1,3 +1,4 @@
+pub mod antigravity;
 pub mod claude;
 pub mod codex;
 pub mod copilot;
@@ -25,6 +26,9 @@ pub fn detected() -> Vec<Provider> {
     if copilot::available() {
         v.push(Provider::Copilot);
     }
+    if antigravity::available() {
+        v.push(Provider::Antigravity);
+    }
     v
 }
 
@@ -35,6 +39,7 @@ pub async fn poll(http: &reqwest::Client, p: Provider) -> Option<LimitReport> {
         Provider::Cursor => cursor::poll(http).await,
         Provider::Grok => grok::poll(http).await,
         Provider::Copilot => copilot::poll(http).await,
+        Provider::Antigravity => antigravity::poll().await,
         _ => return None,
     })
 }

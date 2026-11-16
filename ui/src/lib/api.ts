@@ -5,7 +5,7 @@ import { mockInvoke } from './mock'
 export type Range = 'today' | '7d' | '30d' | 'all'
 export type Provider =
   | 'claude' | 'codex' | 'cursor' | 'grok' | 'gemini'
-  | 'copilot' | 'opencode' | 'pi' | 'qwen' | 'kimi'
+  | 'copilot' | 'opencode' | 'pi' | 'qwen' | 'kimi' | 'antigravity'
 export type TitleMode = 'icon' | 'tokens' | 'limit' | 'cost'
 
 export interface Tokens { total: number; input: number; output: number; cache_read: number; cache_write: number }
@@ -16,6 +16,7 @@ export interface ProviderSummary {
 export interface DayApp { provider: Provider; label: string; tokens: number; cost_usd: number }
 export interface DayPoint { day: string; tokens: number; cost_usd: number; apps: DayApp[] }
 export interface Summary {
+  daily_goal: { day: string; target: number; used: number } | null
   range: Range; tokens: Tokens; cost_usd: number; cost_partial: boolean
   providers: ProviderSummary[]; daily: DayPoint[]; prices_updated: number | null; generated_at: number
 }
@@ -28,6 +29,7 @@ export interface LimitReport {
 }
 export type ResetOutcome = 'reset' | 'nothingToReset' | 'noCredit' | 'alreadyRedeemed'
 export interface Settings {
+  daily_token_goal: number | null
   title_mode: TitleMode; limits: Partial<Record<Provider, boolean>>
   poll_minutes: number; hot_threshold: number; price_refresh: boolean
 }
@@ -43,8 +45,10 @@ function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 export const api = {
   summary: (range: Range) => call<Summary>('get_summary', { range }),
   limits: () => call<LimitReport[]>('get_limits'),
+  burningUntil: () => inTauri ? call<number>('get_burning_until') : Promise.resolve(0),
   refresh: () => call<void>('refresh'),
   codexConsumeReset: (idempotencyKey: string) => call<ResetOutcome>('codex_consume_reset', { idempotencyKey }),
+  goalNotificationPermission: (request = false) => call<boolean>('goal_notification_permission', { request }),
   settings: () => call<SettingsView>('get_settings'),
   setSettings: (settings: Settings) => call<void>('set_settings', { settings }),
   setLaunchAtLogin: (enabled: boolean) => call<void>('set_launch_at_login', { enabled }),
@@ -56,7 +60,12 @@ export async function on(event: string, fn: () => void): Promise<UnlistenFn> {
   return inTauri ? listen(event, fn) : () => {}
 }
 
+export async function onBurning(fn: (until: number) => void): Promise<UnlistenFn> {
+  return inTauri ? listen<number>('burning-until', (event) => fn(event.payload)) : () => {}
+}
+
 export const PROVIDER_LABEL: Record<Provider, string> = {
   claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', grok: 'Grok', gemini: 'Gemini CLI',
   copilot: 'Copilot', opencode: 'OpenCode', pi: 'Pi', qwen: 'Qwen Code', kimi: 'Kimi',
+  antigravity: 'Antigravity CLI',
 }

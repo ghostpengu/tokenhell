@@ -1,9 +1,12 @@
 // Generates tray template icons and the app icon source. Run: swift scripts/icons.swift
 import AppKit
 
-func flame(_ s: CGFloat, inner: Bool) -> NSBezierPath {
+func flame(_ s: CGFloat, inner: Bool, bend: CGFloat = 0) -> NSBezierPath {
     // Designed in a 100x100 box, y down; flipped below.
-    func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: x * s / 100, y: (100 - y) * s / 100) }
+    func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+        let height = (100 - y) / 100
+        return NSPoint(x: (x + bend * height * height) * s / 100, y: (100 - y) * s / 100)
+    }
     let o = NSBezierPath()
     o.move(to: p(50, 96))
     o.curve(to: p(17, 63), controlPoint1: p(29, 96), controlPoint2: p(15, 82))
@@ -28,26 +31,38 @@ func flame(_ s: CGFloat, inner: Bool) -> NSBezierPath {
     return o
 }
 
-func png(_ size: Int, _ path: String, draw: (CGFloat) -> Void) {
-    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8,
+func png(_ width: Int, _ height: Int, _ path: String, draw: () -> Void) {
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8,
                                samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
                                bytesPerRow: 0, bitsPerPixel: 0)!
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-    draw(CGFloat(size))
+    draw()
     NSGraphicsContext.restoreGraphicsState()
     try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
+}
+
+func png(_ size: Int, _ path: String, draw: (CGFloat) -> Void) {
+    png(size, size, path) { draw(CGFloat(size)) }
 }
 
 let out = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "src-tauri/icons"
 
 // Tray: 44px (22pt @2x), black on transparent: macOS recolours template images.
-for (name, inner) in [("tray.png", true), ("tray-hot.png", false)] {
-    png(44, "\(out)/\(name)") { s in
-        let inset: CGFloat = 4
-        let t = NSAffineTransform(); t.translateX(by: inset, yBy: inset)
-        let f = flame(s - inset * 2, inner: inner); f.transform(using: t as AffineTransform)
+for (name, inner) in [("tray", true), ("tray-hot", false)] {
+    png(44, "\(out)/\(name).png") { s in
+        let t = NSAffineTransform(); t.translateX(by: 4, yBy: 4)
+        let f = flame(s - 8, inner: inner); f.transform(using: t as AffineTransform)
         NSColor.black.setFill(); f.fill()
+    }
+    // A full cycle in a single image, decoded once at startup by the tray animation.
+    png(44 * 16, 44, "\(out)/\(name)-frames.png") {
+        for frame in 0..<16 {
+            let bend = CGFloat(8 * sin(Double(frame) * .pi * 2 / 16))
+            let t = NSAffineTransform(); t.translateX(by: CGFloat(frame * 44) + 4, yBy: 4)
+            let f = flame(36, inner: inner, bend: bend); f.transform(using: t as AffineTransform)
+            NSColor.black.setFill(); f.fill()
+        }
     }
 }
 

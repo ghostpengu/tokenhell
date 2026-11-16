@@ -23,9 +23,12 @@ function summary(range: string) {
       used += tokens
       return { ...a, tokens, cost_usd: tokens / 4e6 }
     }).sort((a, b) => b.tokens - a.tokens)
-    return { day: d.toISOString().slice(0, 10), tokens: v, cost_usd: v / 4e6, apps }
+    return { day: localDay(d), tokens: v, cost_usd: v / 4e6, apps }
   })
   return {
+    daily_goal: settings.daily_token_goal == null ? null : {
+      day: localDay(new Date()), target: settings.daily_token_goal, used: 76_310_000,
+    },
     range, tokens: t(2_310_000, 3_604_000, 66_280_000, 4_116_000), cost_usd: 41.86, cost_partial: false,
     providers: [
       { provider: 'claude', label: 'Claude Code', tokens: t(900_000, 2_100_000, 52_000_000, 3_400_000), cost_usd: 28.37, cost_partial: false,
@@ -54,14 +57,24 @@ const limits = () => [
               { key: 'week', label: 'week', used_pct: codexUsed[1], resets_at: now() + 133200, detail: null }] },
   { provider: 'cursor', plan: 'pro', notes: [], observed_at: now() - 40, stale: false, error: null,
     windows: [{ key: 'plan', label: 'month', used_pct: 38, resets_at: now() + 17 * 86400, detail: '$7.60 / $20' }] },
+  { provider: 'antigravity', plan: null, notes: [], observed_at: now() - 40, stale: false, error: null,
+    windows: [{ key: 'gemini-5h', label: 'Gemini · 5h', used_pct: 12, resets_at: now() + 15660, detail: null },
+              { key: 'gemini-weekly', label: 'Gemini · week', used_pct: 4, resets_at: now() + 6 * 86400, detail: null },
+              { key: '3p-5h', label: 'Claude/GPT · 5h', used_pct: 0, resets_at: now() + 18000, detail: null },
+              { key: '3p-weekly', label: 'Claude/GPT · week', used_pct: 0, resets_at: now() + 7 * 86400, detail: null },
+              { key: 'gemini-argon-wtu-weekly', label: 'Gemini 4 Argon · week', used_pct: 0, resets_at: now() + 7 * 86400, detail: null }] },
 ]
 
+const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
 let settings = {
+  daily_token_goal: null as number | null,
   title_mode: 'tokens', limits: {}, poll_minutes: 5, hot_threshold: 85, price_refresh: true,
 }
 
 export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const r: Record<string, () => unknown> = {
+    goal_notification_permission: () => true,
     get_summary: () => summary(String(args?.range ?? 'today')),
     get_limits: limits,
     refresh: () => undefined,
@@ -73,10 +86,10 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return 'reset'
     },
     get_settings: () => ({
-      settings, launch_at_login: false, version: '0.1.0',
-      providers: ['claude', 'codex', 'cursor', 'grok', 'copilot'].map((id, i) => ({
-        id, label: { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', grok: 'Grok', copilot: 'Copilot' }[id],
-        detected: i < 3, limits_supported: true, limits_enabled: i < 3,
+      settings, launch_at_login: false, version: '0.1.1',
+      providers: ['claude', 'codex', 'cursor', 'grok', 'copilot', 'antigravity'].map((id, i) => ({
+        id, label: { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', grok: 'Grok', copilot: 'Copilot', antigravity: 'Antigravity CLI' }[id],
+        detected: i < 3 || id === 'antigravity', limits_supported: true, limits_enabled: i < 3 || id === 'antigravity',
       })),
     }),
     set_settings: () => { settings = args!.settings as typeof settings },

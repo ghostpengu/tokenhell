@@ -15,6 +15,7 @@
   /* categorical (reference palette, light) */
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
   --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
+  --s9: #008c99;
   --seq: #2a78d6; --seq-weak: #9ec5f4;
 
   /* status (fixed) */
@@ -33,6 +34,7 @@
     --tip-bg: rgba(40, 40, 40, 0.96);
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
     --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    --s9: #42b8c4;
     --seq: #3987e5; --seq-weak: #1c5cab;
   }
 }

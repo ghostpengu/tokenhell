@@ -217,7 +217,7 @@ impl Store {
         tx.execute(
             "INSERT INTO files (path, provider, inode, size, mtime, offset, parser_version, state)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-             ON CONFLICT (path) DO UPDATE SET inode = excluded.inode, size = excluded.size,
+             ON CONFLICT (path) DO UPDATE SET provider = excluded.provider, inode = excluded.inode, size = excluded.size,
                 mtime = excluded.mtime, offset = excluded.offset,
                 parser_version = excluded.parser_version, state = excluded.state",
             params![
@@ -267,6 +267,32 @@ impl Store {
                 fallback: r.get::<_, i64>(12)? != 0,
             })
         })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Recently modified Codex logs whose latest recorded turn has not ended.
+    pub fn active_codex_files(&self, since_ms: i64) -> Result<Vec<(String, i64)>> {
+        let c = self.conn();
+        let mut stmt = c.prepare_cached("SELECT path, mtime, state FROM files WHERE provider = ?1 AND mtime >= ?2")?;
+        let rows = stmt.query_map(params![Provider::Codex.as_str(), since_ms], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?))
+        })?;
+        let mut active = Vec::new();
+        for row in rows {
+            let (path, mtime, state) = row?;
+            if serde_json::from_str::<serde_json::Value>(&state).ok()
+                .and_then(|s| s.get("turn_active").and_then(serde_json::Value::as_bool)).unwrap_or(false) {
+                active.push((path, mtime));
+            }
+        }
+        Ok(active)
+    }
+
+    /// Checkpointed files modified since `since_ms`, with their recorded (size, mtime).
+    pub fn recent_files(&self, since_ms: i64) -> Result<Vec<(String, u64, i64)>> {
+        let c = self.conn();
+        let mut stmt = c.prepare_cached("SELECT path, size, mtime FROM files WHERE mtime >= ?1")?;
+        let rows = stmt.query_map([since_ms], |r| Ok((r.get(0)?, r.get::<_, i64>(1)? as u64, r.get(2)?)))?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
 

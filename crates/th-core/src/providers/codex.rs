@@ -92,13 +92,16 @@ impl HistorySource for Codex {
     }
 
     fn parser_version(&self) -> u32 {
-        2 // v2: service tier
+        3 // v3: track turn lifecycle for the activity indicator
     }
 
     fn parse_line(&self, path: &Path, state: &mut Value, line: &str, out: &mut Vec<UsageEvent>) {
         if !(line.contains("token_usage_record")
             || line.contains("token_count")
             || line.contains("turn_context")
+            || line.contains("task_started")
+            || line.contains("task_complete")
+            || line.contains("turn_aborted")
             || line.contains("session_meta")
             || line.contains("thread_settings_applied"))
         {
@@ -117,6 +120,12 @@ impl HistorySource for Codex {
         let ts = j::ts_ms(v.get("timestamp")).unwrap_or(0);
 
         match ty {
+            "event_msg" if j::s(&p, &["type"]) == Some("task_started") => {
+                state["turn_active"] = json!(true);
+            }
+            "event_msg" if matches!(j::s(&p, &["type"]), Some("task_complete" | "turn_aborted")) => {
+                state["turn_active"] = json!(false);
+            }
             "session_meta" => {
                 if let Some(id) = j::s(&p, &["id"]).or(j::s(&p, &["session_id"])) {
                     state["session"] = json!(id);

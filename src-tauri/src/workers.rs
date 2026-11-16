@@ -1,6 +1,7 @@
 //! Background work: file ingestion, limit polling, Cursor event sync, price refresh.
 
 use std::sync::Arc;
+use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -9,7 +10,7 @@ use th_core::Provider;
 use th_core::ingest::Ingestor;
 use th_core::pricing::Pricing;
 
-use crate::state::AppState;
+use crate::state::{AppState, MAX_TURN_SILENCE_MS};
 use crate::tray;
 
 fn st(app: &AppHandle) -> Arc<AppState> {
@@ -19,6 +20,77 @@ fn st(app: &AppHandle) -> Arc<AppState> {
 pub fn usage_changed(app: &AppHandle) {
     let _ = app.emit("usage-updated", ());
     tray::update(app);
+    let a = app.clone();
+    tauri::async_runtime::spawn_blocking(move || crate::goal::check(&a));
+}
+
+/// Local sources report completed usage events. Only recent token-bearing events count as
+/// activity, so rescans, old imports and pricing refreshes do not animate the flame.
+fn local_usage_changed(app: &AppHandle, paths: &[std::path::PathBuf], usage_changed_flag: bool, rescanned: bool) {
+    let s = st(app);
+    let now = chrono::Utc::now().timestamp_millis();
+    let before = s.burning_until();
+    let codex_root = th_core::providers::codex_home();
+    if rescanned && let Ok(active) = s.store.active_codex_files(now - MAX_TURN_SILENCE_MS) {
+        let mut turns = s.active_codex.lock().unwrap_or_else(|e| e.into_inner());
+        // Preserve known quiet turns, but do not resurrect old abandoned sessions on startup.
+        *turns = reconcile_turns(&turns, active, now);
+    }
+    for path in paths.iter().filter(|p| p.starts_with(codex_root.join("sessions")) || p.starts_with(codex_root.join("archived_sessions"))) {
+        let key = path.to_string_lossy().into_owned();
+        if let Ok(Some(row)) = s.store.file(&key) {
+            if let Some(active) = row.state.get("turn_active").and_then(serde_json::Value::as_bool) {
+                let mut turns = s.active_codex.lock().unwrap_or_else(|e| e.into_inner());
+                if active { turns.insert(key, row.mtime); } else { turns.remove(&key); }
+            }
+        }
+    }
+    if usage_changed_flag && let Ok(events) = s.store.events_in(now - 12_000, now + 1_000) {
+        if let Some(until) = burning_until(&events, now) {
+            s.burning_until_ms.fetch_max(until, Ordering::Relaxed);
+        }
+    }
+    let after = s.burning_until();
+    if after != before {
+        let _ = app.emit("burning-until", after);
+    }
+    if usage_changed_flag { usage_changed(app); }
+}
+
+fn reconcile_turns(existing: &BTreeMap<String, i64>, active: Vec<(String, i64)>, now: i64) -> BTreeMap<String, i64> {
+    active.into_iter()
+        .filter(|(path, modified)| *modified >= now - 5 * 60_000 || existing.contains_key(path))
+        .collect()
+}
+
+fn burning_until(events: &[th_core::store::EventRow], now: i64) -> Option<i64> {
+    events.iter()
+        .filter(|e| e.total() > 0 && e.ts <= now && e.ts > now - 12_000)
+        .map(|e| e.ts + 12_000)
+        .max()
+}
+
+#[cfg(test)]
+mod activity_tests {
+    use super::{burning_until, reconcile_turns};
+    use th_core::store::EventRow;
+
+    #[test]
+    fn only_recent_token_events_keep_the_flame_active() {
+        let event = |ts, output| EventRow { ts, output, ..Default::default() };
+        let now = 100_000;
+        assert_eq!(burning_until(&[event(88_000, 1), event(99_000, 0), event(100_001, 1)], now), None);
+        assert_eq!(burning_until(&[event(95_000, 10), event(99_000, 5)], now), Some(111_000));
+    }
+
+    #[test]
+    fn rescan_keeps_quiet_turns_and_removes_completed_ones() {
+        let now = 1_000_000;
+        let existing = [("quiet".into(), 100_000), ("completed".into(), 200_000)].into_iter().collect();
+        let active = vec![("quiet".into(), 100_000), ("recent".into(), 999_000), ("abandoned".into(), 100_000)];
+        let result = reconcile_turns(&existing, active, now);
+        assert_eq!(result.keys().map(String::as_str).collect::<Vec<_>>(), vec!["quiet", "recent"]);
+    }
 }
 
 pub fn start(app: &AppHandle) {
@@ -32,9 +104,13 @@ pub fn start(app: &AppHandle) {
             let t = std::time::Instant::now();
             let n = ing.scan_all();
             tracing::info!("initial scan: {n} events in {:?}", t.elapsed());
+            if let Ok(active) = s.store.active_codex_files(chrono::Utc::now().timestamp_millis() - 5 * 60_000) {
+                s.active_codex.lock().unwrap_or_else(|e| e.into_inner()).extend(active);
+                let _ = a.emit("burning-until", s.burning_until());
+            }
             usage_changed(&a);
             let a2 = a.clone();
-            if let Err(e) = ing.watch(Duration::from_secs(600), move || usage_changed(&a2)) {
+            if let Err(e) = ing.watch(Duration::from_secs(600), move |paths, changed, rescanned| local_usage_changed(&a2, paths, changed, rescanned)) {
                 tracing::error!("watcher stopped: {e:#}");
             }
         })

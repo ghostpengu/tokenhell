@@ -11,6 +11,7 @@ base64 = "0.22"
 cbc = { version = "0.1", features = ["alloc"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 dirs = "6"
+libc = "0.2"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 sha1 = "0.10"
 notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
@@ -18,10 +19,10 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tempfile = "3"
 tokio = { version = "1", features = ["rt", "macros", "process", "io-util", "time", "sync", "fs"] }
 tracing = "0.1"
 walkdir = "2"
 
 [dev-dependencies]
-tempfile = "3"
 tokio = { version = "1", features = ["rt", "macros"] }

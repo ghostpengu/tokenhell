@@ -1,9 +1,11 @@
+mod antigravity;
 mod claude;
 mod codex;
 mod cursor_hook;
 mod grok;
 mod others;
 
+pub use antigravity::Antigravity;
 pub use claude::Claude;
 pub use codex::{Codex, codex_home};
 pub use cursor_hook::CursorHook;
@@ -24,5 +26,6 @@ pub fn all_history_sources() -> Vec<Box<dyn HistorySource>> {
         Box::new(Qwen),
         Box::new(Kimi),
         Box::new(OpenCode),
+        Box::new(Antigravity),
     ]
 }

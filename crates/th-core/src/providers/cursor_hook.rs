@@ -31,7 +31,7 @@ impl HistorySource for CursorHook {
     }
 
     fn matches(&self, path: &Path) -> bool {
-        self.roots().iter().any(|root| path == root.join("usage.jsonl"))
+        path.file_name().is_some_and(|name| name == "usage.jsonl")
     }
 
     fn parser_version(&self) -> u32 {

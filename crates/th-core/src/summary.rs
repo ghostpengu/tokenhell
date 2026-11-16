@@ -94,8 +94,16 @@ pub struct DayPoint {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct DailyGoal {
+    pub day: String,
+    pub target: u64,
+    pub used: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct Summary {
     pub range: Range,
+    pub daily_goal: Option<DailyGoal>,
     pub tokens: Tokens,
     pub cost_usd: f64,
     pub cost_partial: bool,
@@ -232,6 +240,7 @@ pub fn summarize(store: &Store, pricing: &Pricing, range: Range) -> Result<Summa
         .collect();
 
     Ok(Summary {
+        daily_goal: None,
         range,
         tokens,
         cost_usd: cost_total,
